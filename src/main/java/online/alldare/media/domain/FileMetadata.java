@@ -23,6 +23,7 @@ public class FileMetadata {
     private boolean ownerWrite;
     private boolean groupRead;
     private boolean groupWrite;
+    private boolean worldRead;
     private String s3Key;
 
     @CreationTimestamp

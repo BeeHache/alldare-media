@@ -11,13 +11,20 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import online.alldare.media.domain.FileMetadata;
+import online.alldare.media.repository.FileMetadataRepository;
+import org.springframework.security.access.AccessDeniedException;
+import software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PresignedPutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
+import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 
 import java.net.URL;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -32,15 +39,76 @@ class StorageServiceTest {
     @Mock
     private S3Presigner s3Presigner;
 
+    @Mock
+    private FileMetadataRepository fileMetadataRepository;
+
     @InjectMocks
     private StorageService storageService;
 
     @Captor
     private ArgumentCaptor<PutObjectPresignRequest> presignRequestCaptor;
 
+    @Captor
+    private ArgumentCaptor<GetObjectPresignRequest> getPresignRequestCaptor;
+
     @BeforeEach
     void setUp() {
         ReflectionTestUtils.setField(storageService, "bucketName", "test-bucket");
+        ReflectionTestUtils.setField(storageService, "cdnBaseUrl", "https://cdn.example.com");
+    }
+
+    @Test
+    void getDownloadUrl_PublicFile_ReturnsCdnUrl() {
+        String s3Key = "public/file.jpg";
+        FileMetadata metadata = new FileMetadata();
+        metadata.setS3Key(s3Key);
+        metadata.setWorldRead(true);
+
+        when(fileMetadataRepository.findByS3Key(s3Key)).thenReturn(Optional.of(metadata));
+
+        String result = storageService.getDownloadUrl(s3Key, null);
+
+        assertThat(result).isEqualTo("https://cdn.example.com/" + s3Key);
+    }
+
+    @Test
+    void getDownloadUrl_PrivateFileOwner_ReturnsPresignedUrl() throws Exception {
+        String s3Key = "private/file.jpg";
+        UUID ownerId = UUID.randomUUID();
+        FileMetadata metadata = new FileMetadata();
+        metadata.setS3Key(s3Key);
+        metadata.setOwnerId(ownerId);
+        metadata.setOwnerRead(true);
+        metadata.setWorldRead(false);
+
+        URL expectedUrl = new URL("https://test-bucket.s3.amazonaws.com/" + s3Key + "?signed=true");
+        PresignedGetObjectRequest presignedRequest = mock(PresignedGetObjectRequest.class);
+        when(presignedRequest.url()).thenReturn(expectedUrl);
+        when(s3Presigner.presignGetObject(any(GetObjectPresignRequest.class))).thenReturn(presignedRequest);
+        when(fileMetadataRepository.findByS3Key(s3Key)).thenReturn(Optional.of(metadata));
+
+        String result = storageService.getDownloadUrl(s3Key, ownerId);
+
+        assertThat(result).isEqualTo(expectedUrl.toString());
+        verify(s3Presigner).presignGetObject(getPresignRequestCaptor.capture());
+        assertThat(getPresignRequestCaptor.getValue().getObjectRequest().key()).isEqualTo(s3Key);
+    }
+
+    @Test
+    void getDownloadUrl_PrivateFileNonOwner_ThrowsAccessDenied() {
+        String s3Key = "private/file.jpg";
+        UUID ownerId = UUID.randomUUID();
+        UUID otherUserId = UUID.randomUUID();
+        FileMetadata metadata = new FileMetadata();
+        metadata.setS3Key(s3Key);
+        metadata.setOwnerId(ownerId);
+        metadata.setOwnerRead(true);
+        metadata.setWorldRead(false);
+
+        when(fileMetadataRepository.findByS3Key(s3Key)).thenReturn(Optional.of(metadata));
+
+        assertThatThrownBy(() -> storageService.getDownloadUrl(s3Key, otherUserId))
+                .isInstanceOf(AccessDeniedException.class);
     }
 
     @Test
@@ -65,13 +133,24 @@ class StorageServiceTest {
     }
 
     @Test
-    void generateFileName_CreatesUniqueName() {
+    void generateFileName_CreatesUniqueNameWithPublicPrefix() {
         UUID authorId = UUID.randomUUID();
         String extension = ".jpg";
 
-        String fileName = storageService.generateFileName(authorId, extension);
+        String fileName = storageService.generateFileName(authorId, extension, true);
 
-        assertThat(fileName).startsWith(authorId.toString() + "/");
+        assertThat(fileName).startsWith("public/" + authorId.toString() + "/");
+        assertThat(fileName).endsWith(extension);
+    }
+
+    @Test
+    void generateFileName_CreatesUniqueNameWithPrivatePrefix() {
+        UUID authorId = UUID.randomUUID();
+        String extension = ".jpg";
+
+        String fileName = storageService.generateFileName(authorId, extension, false);
+
+        assertThat(fileName).startsWith("private/" + authorId.toString() + "/");
         assertThat(fileName).endsWith(extension);
     }
 }

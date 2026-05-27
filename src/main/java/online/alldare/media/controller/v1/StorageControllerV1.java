@@ -12,6 +12,7 @@ import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -25,13 +26,23 @@ public class StorageControllerV1 {
         this.storageService = storageService;
     }
 
+    @GetMapping("/download-url")
+    public ResponseEntity<Map<String, String>> getDownloadUrl(
+            @RequestParam String s3Key,
+            @AuthenticationPrincipal Jwt jwt) {
+        UUID currentUserId = (jwt != null) ? UUID.fromString(jwt.getSubject()) : null;
+        String url = storageService.getDownloadUrl(s3Key, currentUserId);
+        return ResponseEntity.ok(Map.of("url", url));
+    }
+
     @GetMapping("/presigned-url")
     public StorageResponse getPresignedUrl(
             @RequestParam UUID authorId,
             @RequestParam String extension,
-            @RequestParam(required = false) String contentType) {
+            @RequestParam(required = false) String contentType,
+            @RequestParam(defaultValue = "false") boolean isPublic) {
         
-        String fileName = storageService.generateFileName(authorId, extension);
+        String fileName = storageService.generateFileName(authorId, extension, isPublic);
         String url = storageService.generatePresignedUploadUrl(fileName, contentType);
         try {
             return new StorageResponse(new URI(url).toURL(), fileName);

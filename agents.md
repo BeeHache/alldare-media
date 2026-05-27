@@ -12,9 +12,10 @@ The media management microservice for the Alldare platform. This service handles
 ## 3. Data Strategy (The "Golden Rules")
 *   **No Proxying:** This service MUST NOT proxy media bytes between the client and storage. 
     *   *Implementation:* Always use **Pre-signed URLs** for uploads. The service generates the S3 link; the client uploads directly to storage.
-*   **File Naming:** Files are stored using a structured path: `{authorId}/{random-uuid}{extension}`.
-    *   *Rationale:* Ensures isolation by user and prevents filename collisions.
-*   **Access Control:** Deletion requests must be verified against the `authorId` prefix of the filename to ensure users can only delete their own content.
+*   **Prefix-Based Isolation:** Files are segregated into `public/` and `private/` prefixes based on their visibility. 
+    *   *S3 Key Format:* `[public|private]/{authorId}/{random-uuid}{extension}`.
+    *   *Security Enforcement:* The CDN is configured to ONLY serve content from the `public/` prefix, preventing URL-guessing attacks on private content.
+*   **Access Control:** Deletion requests must be verified against the `authorId` part of the path to ensure users can only delete their own content.
 
 ## 4. Key Architectural Patterns
 ### Pre-signed URL Pattern

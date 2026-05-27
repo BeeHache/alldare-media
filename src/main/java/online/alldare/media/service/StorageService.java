@@ -12,8 +12,16 @@ import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.PresignedPutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
 
+import online.alldare.media.domain.FileMetadata;
+import online.alldare.media.repository.FileMetadataRepository;
+import org.springframework.security.access.AccessDeniedException;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
+import software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequest;
+
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -23,9 +31,45 @@ public class StorageService {
 
     private final S3Client s3Client;
     private final S3Presigner s3Presigner;
+    private final FileMetadataRepository fileMetadataRepository;
 
     @Value("${alldare.s3.bucket}")
     private String bucketName;
+
+    @Value("${alldare.cdn.base-url}")
+    private String cdnBaseUrl;
+
+    public String getDownloadUrl(String s3Key, UUID requestingUserId) {
+        FileMetadata metadata = fileMetadataRepository.findByS3Key(s3Key)
+                .orElseThrow(() -> new RuntimeException("File metadata not found for key: " + s3Key));
+
+        if (metadata.isWorldRead()) {
+            return String.format("%s/%s", cdnBaseUrl, s3Key);
+        }
+
+        // Check permissions for private content
+        if (requestingUserId != null && requestingUserId.equals(metadata.getOwnerId()) && metadata.isOwnerRead()) {
+            return generatePresignedDownloadUrl(s3Key);
+        }
+
+        // TODO: Implement group check if needed
+        throw new AccessDeniedException("User does not have permission to access this file.");
+    }
+
+    private String generatePresignedDownloadUrl(String s3Key) {
+        GetObjectRequest getObjectRequest = GetObjectRequest.builder()
+                .bucket(bucketName)
+                .key(s3Key)
+                .build();
+
+        GetObjectPresignRequest presignRequest = GetObjectPresignRequest.builder()
+                .signatureDuration(Duration.ofMinutes(5))
+                .getObjectRequest(getObjectRequest)
+                .build();
+
+        PresignedGetObjectRequest presignedRequest = s3Presigner.presignGetObject(presignRequest);
+        return presignedRequest.url().toString();
+    }
 
     public String generatePresignedUploadUrl(String fileName, String contentType) {
         PutObjectRequest putObjectRequest = PutObjectRequest.builder()
@@ -43,8 +87,9 @@ public class StorageService {
         return presignedRequest.url().toString();
     }
 
-    public String generateFileName(UUID authorId, String originalExtension) {
-        return String.format("%s/%s%s", authorId, UUID.randomUUID(), originalExtension);
+    public String generateFileName(UUID authorId, String originalExtension, boolean isPublic) {
+        String prefix = isPublic ? "public" : "private";
+        return String.format("%s/%s/%s%s", prefix, authorId, UUID.randomUUID(), originalExtension);
     }
 
     public void deleteFile(String fileName) {
