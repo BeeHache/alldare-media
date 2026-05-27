@@ -1,0 +1,23 @@
+# Maven
+target/
+
+# IDEs
+.idea/
+*.iml
+out/
+
+# Package Files
+*.jar
+*.war
+*.zip
+*.tar.gz
+
+# Environment
+.env
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
