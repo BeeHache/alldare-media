@@ -30,7 +30,11 @@ public class StorageControllerV1 {
     public ResponseEntity<Map<String, String>> getDownloadUrl(
             @RequestParam String s3Key,
             @AuthenticationPrincipal Jwt jwt) {
-        UUID currentUserId = (jwt != null) ? UUID.fromString(jwt.getSubject()) : null;
+        UUID currentUserId = null;
+        if (jwt != null) {
+            String userIdClaim = jwt.getClaimAsString("userId");
+            currentUserId = UUID.fromString(userIdClaim != null ? userIdClaim : jwt.getSubject());
+        }
         String url = storageService.getDownloadUrl(s3Key, currentUserId);
         return ResponseEntity.ok(Map.of("url", url));
     }
@@ -53,7 +57,8 @@ public class StorageControllerV1 {
 
     @DeleteMapping("/{fileName}")
     public ResponseEntity<Void> deleteFile(@PathVariable String fileName, @AuthenticationPrincipal Jwt jwt) {
-        UUID currentUserId = UUID.fromString(Objects.requireNonNull(jwt.getSubject()));
+        String userIdClaim = jwt.getClaimAsString("userId");
+        UUID currentUserId = UUID.fromString(userIdClaim != null ? userIdClaim : Objects.requireNonNull(jwt.getSubject()));
         
         // Simple permission check: if the file name starts with the user ID, they can delete it.
         // This is a common pattern for user-specific storage.

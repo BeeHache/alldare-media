@@ -26,6 +26,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -70,7 +71,7 @@ class StorageControllerV1Test {
         String downloadUrl = "https://cdn.example.com/" + s3Key;
         UUID userId = UUID.randomUUID();
 
-        when(mockJwt.getSubject()).thenReturn(userId.toString());
+        when(mockJwt.getClaimAsString("userId")).thenReturn(userId.toString());
         when(storageService.getDownloadUrl(eq(s3Key), eq(userId))).thenReturn(downloadUrl);
 
         mockMvc.perform(get("/api/v1/storage/download-url")
@@ -97,5 +98,16 @@ class StorageControllerV1Test {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.uploadUrl").value(presignedUrl))
                 .andExpect(jsonPath("$.fileName").value(fileName));
+    }
+
+    @Test
+    void deleteFile_ValidUser_DeletesFile() throws Exception {
+        UUID userId = UUID.randomUUID();
+        String fileName = userId.toString() + "-file.jpg";
+
+        when(mockJwt.getClaimAsString("userId")).thenReturn(userId.toString());
+
+        mockMvc.perform(delete("/api/v1/storage/" + fileName))
+                .andExpect(status().isNoContent());
     }
 }

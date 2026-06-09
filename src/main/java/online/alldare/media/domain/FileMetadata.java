@@ -25,6 +25,7 @@ public class FileMetadata {
     private boolean groupWrite;
     private boolean worldRead;
     private String s3Key;
+    private String contentType;
 
     @CreationTimestamp
     private Instant createdAt;
