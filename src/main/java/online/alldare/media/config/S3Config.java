@@ -18,6 +18,9 @@ public class S3Config {
     @Value("${alldare.s3.endpoint}")
     private String endpoint;
 
+    @Value("${alldare.s3.presign-endpoint}")
+    private String presignEndpoint;
+
     @Value("${alldare.s3.access-key}")
     private String accessKey;
 
@@ -49,7 +52,7 @@ public class S3Config {
 
         return S3Presigner.builder()
                 .region(Region.of(region))
-                .endpointOverride(URI.create(endpoint))
+                .endpointOverride(URI.create(presignEndpoint))
                 .credentialsProvider(StaticCredentialsProvider.create(
                         AwsBasicCredentials.create(accessKey, secretKey)))
                 .serviceConfiguration(s3Configuration)
