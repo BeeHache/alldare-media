@@ -68,6 +68,9 @@ public class MediaMetadataUpdateIntegrationTest {
     private FileMetadataRepository fileMetadataRepository;
 
     @Autowired
+    private jakarta.persistence.EntityManager entityManager;
+
+    @Autowired
     private StringRedisTemplate redisTemplate;
 
     @Autowired
@@ -117,6 +120,7 @@ public class MediaMetadataUpdateIntegrationTest {
                 .andExpect(jsonPath("$.worldRead").value(true));
 
         // Then 1: Verify database values (worldRead is true, s3Key not yet updated synchronously)
+        entityManager.clear();
         FileMetadata savedMeta = fileMetadataRepository.findById(fileId).orElseThrow();
         assertThat(savedMeta.isWorldRead()).isTrue();
 
@@ -135,6 +139,7 @@ public class MediaMetadataUpdateIntegrationTest {
         String expectedNewKey = "public/" + ownerId + "/image.png";
         
         await().atMost(5, TimeUnit.SECONDS).untilAsserted(() -> {
+            entityManager.clear();
             FileMetadata finalMeta = fileMetadataRepository.findById(fileId).orElseThrow();
             assertThat(finalMeta.getS3Key()).isEqualTo(expectedNewKey);
         });
@@ -171,5 +176,45 @@ public class MediaMetadataUpdateIntegrationTest {
                         .content(objectMapper.writeValueAsString(updateRequest))
                         .with(jwt().jwt(j -> j.claim("userId", otherUserId.toString()).subject("malicioususer"))))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void shouldGetUserMediaSuccessfully() throws Exception {
+        // Given
+        UUID ownerId = UUID.randomUUID();
+        
+        FileMetadata file1 = new FileMetadata();
+        file1.setId(UUID.randomUUID());
+        file1.setOwnerId(ownerId);
+        file1.setS3Key("private/" + ownerId + "/file1.png");
+        file1.setWorldRead(false);
+        file1.setOwnerRead(true);
+        fileMetadataRepository.saveAndFlush(file1);
+
+        FileMetadata file2 = new FileMetadata();
+        file2.setId(UUID.randomUUID());
+        file2.setOwnerId(ownerId);
+        file2.setS3Key("public/" + ownerId + "/file2.png");
+        file2.setWorldRead(true);
+        file2.setOwnerRead(true);
+        fileMetadataRepository.saveAndFlush(file2);
+
+        // Mock S3Presigner for the private file
+        java.net.URL mockUrl = new java.net.URL("http://localhost:9000/presigned-download-url");
+        software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequest presignedRequest = Mockito.mock(software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequest.class);
+        Mockito.when(presignedRequest.url()).thenReturn(mockUrl);
+        Mockito.when(s3Presigner.presignGetObject(any(software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest.class)))
+                .thenReturn(presignedRequest);
+
+        // When & Then
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/storage/my-media")
+                        .with(jwt().jwt(j -> j.claim("userId", ownerId.toString()).subject("testuser"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].s3Key").value("public/" + ownerId + "/file2.png"))
+                .andExpect(jsonPath("$[0].worldRead").value(true))
+                .andExpect(jsonPath("$[1].s3Key").value("private/" + ownerId + "/file1.png"))
+                .andExpect(jsonPath("$[1].worldRead").value(false))
+                .andExpect(jsonPath("$[1].downloadUrl").value("http://localhost:9000/presigned-download-url"));
     }
 }

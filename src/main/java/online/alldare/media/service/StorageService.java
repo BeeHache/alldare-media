@@ -22,6 +22,7 @@ import online.alldare.media.repository.FileMetadataRepository;
 import org.springframework.security.access.AccessDeniedException;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
+import online.alldare.media.domain.dto.UserMediaResponse;
 import software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequest;
 
 import java.time.Duration;
@@ -168,5 +169,19 @@ public class StorageService {
         messagePublisher.publish("stream:media", event);
 
         return savedMetadata;
+    }
+
+    public List<UserMediaResponse> getUserMedia(UUID ownerId) {
+        List<FileMetadata> metadataList = fileMetadataRepository.findByOwnerIdOrderByCreatedAtDesc(ownerId);
+        return metadataList.stream()
+                .map(m -> new UserMediaResponse(
+                        m.getId(),
+                        m.getS3Key(),
+                        m.getContentType(),
+                        m.isWorldRead(),
+                        getDownloadUrl(m.getS3Key(), ownerId),
+                        m.getCreatedAt()
+                ))
+                .toList();
     }
 }

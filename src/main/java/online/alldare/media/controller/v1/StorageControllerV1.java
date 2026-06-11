@@ -1,6 +1,7 @@
 package online.alldare.media.controller.v1;
 
 import online.alldare.media.domain.dto.StorageResponse;
+import online.alldare.media.domain.dto.UserMediaResponse;
 import online.alldare.media.service.StorageService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -92,5 +93,15 @@ public class StorageControllerV1 {
 
         FileMetadata updated = storageService.updateFileMetadata(id, request, currentUserId);
         return ResponseEntity.ok(updated);
+    }
+
+    @GetMapping("/my-media")
+    public ResponseEntity<List<UserMediaResponse>> getMyMedia(@AuthenticationPrincipal Jwt jwt) {
+        UUID currentUserId = null;
+        if (jwt != null) {
+            String userIdClaim = jwt.getClaimAsString("userId");
+            currentUserId = UUID.fromString(userIdClaim != null ? userIdClaim : jwt.getSubject());
+        }
+        return ResponseEntity.ok(storageService.getUserMedia(currentUserId));
     }
 }
