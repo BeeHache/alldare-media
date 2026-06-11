@@ -23,9 +23,16 @@ import java.net.URL;
 import java.util.Optional;
 import java.util.UUID;
 
+import online.alldare.common.messaging.MessagePublisher;
+import online.alldare.common.dto.media.FileMetadataUpdateRequest;
+import online.alldare.common.event.MetaDataUpdateEvent;
+import software.amazon.awssdk.services.s3.model.CopyObjectRequest;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -41,6 +48,9 @@ class StorageServiceTest {
 
     @Mock
     private FileMetadataRepository fileMetadataRepository;
+
+    @Mock
+    private MessagePublisher messagePublisher;
 
     @InjectMocks
     private StorageService storageService;
@@ -152,5 +162,59 @@ class StorageServiceTest {
 
         assertThat(fileName).startsWith("private/" + authorId.toString() + "/");
         assertThat(fileName).endsWith(extension);
+    }
+
+    @Test
+    void updateFileMetadata_OwnerUpdate_SucceedsAndPublishesEvent() {
+        UUID id = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        FileMetadata metadata = new FileMetadata();
+        metadata.setId(id);
+        metadata.setOwnerId(ownerId);
+        metadata.setS3Key("private/file.jpg");
+        metadata.setWorldRead(false);
+
+        FileMetadataUpdateRequest updateRequest = FileMetadataUpdateRequest.builder()
+                .worldRead(true)
+                .contentType("image/jpeg")
+                .build();
+
+        when(fileMetadataRepository.findById(id)).thenReturn(Optional.of(metadata));
+        when(fileMetadataRepository.save(any(FileMetadata.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        FileMetadata result = storageService.updateFileMetadata(id, updateRequest, ownerId);
+
+        assertThat(result.isWorldRead()).isTrue();
+        assertThat(result.getContentType()).isEqualTo("image/jpeg");
+        verify(fileMetadataRepository).save(metadata);
+        verify(messagePublisher).publish(eq("stream:media"), any(MetaDataUpdateEvent.class));
+    }
+
+    @Test
+    void updateFileMetadata_NonOwnerUpdate_ThrowsAccessDenied() {
+        UUID id = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID otherUserId = UUID.randomUUID();
+        FileMetadata metadata = new FileMetadata();
+        metadata.setId(id);
+        metadata.setOwnerId(ownerId);
+
+        FileMetadataUpdateRequest updateRequest = FileMetadataUpdateRequest.builder().worldRead(true).build();
+
+        when(fileMetadataRepository.findById(id)).thenReturn(Optional.of(metadata));
+
+        assertThatThrownBy(() -> storageService.updateFileMetadata(id, updateRequest, otherUserId))
+                .isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
+    void moveObject_ExecutesCopyAndDeleteOnS3() {
+        String sourceKey = "private/file.jpg";
+        String destKey = "public/file.jpg";
+
+        storageService.moveObject(sourceKey, destKey);
+
+        verify(s3Client).copyObject(any(CopyObjectRequest.class));
+        verify(s3Client).deleteObject(any(DeleteObjectRequest.class));
     }
 }

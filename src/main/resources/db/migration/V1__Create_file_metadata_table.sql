@@ -5,7 +5,7 @@ CREATE TABLE file_metadata (
     owner_read BOOLEAN NOT NULL DEFAULT TRUE,
     owner_write BOOLEAN NOT NULL DEFAULT TRUE,
     group_read BOOLEAN NOT NULL DEFAULT FALSE,
-    group_write BOOLEAN NOT NULL DEFAULT FALSE,ane
+    group_write BOOLEAN NOT NULL DEFAULT FALSE,
     world_read BOOLEAN NOT NULL DEFAULT FALSE,
     s3_key VARCHAR(255) NOT NULL,
     content_type VARCHAR(255),

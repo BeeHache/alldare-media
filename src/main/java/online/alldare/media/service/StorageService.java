@@ -3,7 +3,9 @@ package online.alldare.media.service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.CopyObjectRequest;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
@@ -12,6 +14,9 @@ import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.PresignedPutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
 
+import online.alldare.common.messaging.MessagePublisher;
+import online.alldare.common.dto.media.FileMetadataUpdateRequest;
+import online.alldare.common.event.MetaDataUpdateEvent;
 import online.alldare.media.domain.FileMetadata;
 import online.alldare.media.repository.FileMetadataRepository;
 import org.springframework.security.access.AccessDeniedException;
@@ -21,7 +26,6 @@ import software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequ
 
 import java.time.Duration;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -32,6 +36,7 @@ public class StorageService {
     private final S3Client s3Client;
     private final S3Presigner s3Presigner;
     private final FileMetadataRepository fileMetadataRepository;
+    private final MessagePublisher messagePublisher;
 
     @Value("${alldare.s3.bucket}")
     private String bucketName;
@@ -109,5 +114,59 @@ public class StorageService {
         return s3Client.listObjectsV2(listObjectsV2Request).contents().stream()
                 .map(S3Object::key)
                 .collect(Collectors.toList());
+    }
+
+    public void moveObject(String sourceKey, String destinationKey) {
+        CopyObjectRequest copyObjectRequest = CopyObjectRequest.builder()
+                .sourceBucket(bucketName)
+                .sourceKey(sourceKey)
+                .destinationBucket(bucketName)
+                .destinationKey(destinationKey)
+                .build();
+        s3Client.copyObject(copyObjectRequest);
+
+        DeleteObjectRequest deleteObjectRequest = DeleteObjectRequest.builder()
+                .bucket(bucketName)
+                .key(sourceKey)
+                .build();
+        s3Client.deleteObject(deleteObjectRequest);
+    }
+
+    @Transactional
+    public FileMetadata updateFileMetadata(UUID id, FileMetadataUpdateRequest request, UUID currentUserId) {
+        FileMetadata metadata = fileMetadataRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("File metadata not found for ID: " + id));
+
+        if (currentUserId == null || !currentUserId.equals(metadata.getOwnerId())) {
+            throw new AccessDeniedException("User does not have permission to update this file metadata.");
+        }
+
+        if (request.ownerRead() != null) metadata.setOwnerRead(request.ownerRead());
+        if (request.ownerWrite() != null) metadata.setOwnerWrite(request.ownerWrite());
+        if (request.groupRead() != null) metadata.setGroupRead(request.groupRead());
+        if (request.groupWrite() != null) metadata.setGroupWrite(request.groupWrite());
+        if (request.worldRead() != null) metadata.setWorldRead(request.worldRead());
+        if (request.groupId() != null) metadata.setGroupId(request.groupId());
+        if (request.contentType() != null) metadata.setContentType(request.contentType());
+
+        FileMetadata savedMetadata = fileMetadataRepository.save(metadata);
+
+        // Publish event to Redis Stream
+        MetaDataUpdateEvent event = MetaDataUpdateEvent.builder()
+                .fileId(savedMetadata.getId())
+                .ownerId(savedMetadata.getOwnerId())
+                .s3Key(savedMetadata.getS3Key())
+                .worldRead(savedMetadata.isWorldRead())
+                .ownerRead(savedMetadata.isOwnerRead())
+                .ownerWrite(savedMetadata.isOwnerWrite())
+                .groupRead(savedMetadata.isGroupRead())
+                .groupWrite(savedMetadata.isGroupWrite())
+                .groupId(savedMetadata.getGroupId())
+                .contentType(savedMetadata.getContentType())
+                .build();
+
+        messagePublisher.publish("stream:media", event);
+
+        return savedMetadata;
     }
 }

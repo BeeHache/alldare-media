@@ -2,6 +2,25 @@ spring:
   application:
     name: alldare-media
   
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/alldare_media}
+    username: ${SPRING_DATASOURCE_USERNAME:alldare}
+    password: ${SPRING_DATASOURCE_PASSWORD:password}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+    show-sql: false
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+
   data:
     redis:
       host: ${SPRING_DATA_REDIS_HOST:localhost}

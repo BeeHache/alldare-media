@@ -7,6 +7,8 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
+import online.alldare.media.domain.FileMetadata;
+import online.alldare.common.dto.media.FileMetadataUpdateRequest;
 
 import java.net.MalformedURLException;
 import java.net.URI;
@@ -74,5 +76,21 @@ public class StorageControllerV1 {
     public ResponseEntity<List<String>> listFiles(@RequestParam(required = false) String prefix) {
         List<String> files = storageService.listFiles(prefix);
         return ResponseEntity.ok(files);
+    }
+
+    @PatchMapping("/metadata/{id}")
+    public ResponseEntity<FileMetadata> updateFileMetadata(
+            @PathVariable UUID id,
+            @RequestBody FileMetadataUpdateRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        
+        UUID currentUserId = null;
+        if (jwt != null) {
+            String userIdClaim = jwt.getClaimAsString("userId");
+            currentUserId = UUID.fromString(userIdClaim != null ? userIdClaim : jwt.getSubject());
+        }
+
+        FileMetadata updated = storageService.updateFileMetadata(id, request, currentUserId);
+        return ResponseEntity.ok(updated);
     }
 }
