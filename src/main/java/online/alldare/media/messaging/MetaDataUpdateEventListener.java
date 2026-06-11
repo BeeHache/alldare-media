@@ -37,6 +37,17 @@ public class MetaDataUpdateEventListener implements StreamListener<String, Objec
             FileMetadata metadata = fileMetadataRepository.findById(event.fileId())
                     .orElseThrow(() -> new RuntimeException("File metadata not found for ID: " + event.fileId()));
 
+            // Sync all fields from the event to avoid stale overwrites
+            metadata.setWorldRead(event.worldRead());
+            metadata.setOwnerRead(event.ownerRead());
+            metadata.setOwnerWrite(event.ownerWrite());
+            metadata.setGroupRead(event.groupRead());
+            metadata.setGroupWrite(event.groupWrite());
+            metadata.setGroupId(event.groupId());
+            if (event.contentType() != null) {
+                metadata.setContentType(event.contentType());
+            }
+
             String currentKey = metadata.getS3Key();
             boolean isWorldRead = event.worldRead();
             
@@ -56,6 +67,7 @@ public class MetaDataUpdateEventListener implements StreamListener<String, Objec
                 fileMetadataRepository.save(metadata);
             } else {
                 log.debug("No S3 move required for S3 key '{}' with worldRead={}", currentKey, isWorldRead);
+                fileMetadataRepository.save(metadata);
             }
 
             // Acknowledge stream message

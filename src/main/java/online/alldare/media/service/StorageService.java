@@ -24,6 +24,8 @@ import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 import online.alldare.media.domain.dto.UserMediaResponse;
 import software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequest;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.Duration;
 import java.util.List;
@@ -74,7 +76,11 @@ public class StorageService {
                 .build();
 
         PresignedGetObjectRequest presignedRequest = s3Presigner.presignGetObject(presignRequest);
-        return presignedRequest.url().toString();
+        String url = presignedRequest.url().toString();
+        if (url.contains("http://minio:9000")) {
+            url = url.replace("http://minio:9000", "http://localhost:9000");
+        }
+        return url;
     }
 
     public String generatePresignedUploadUrl(String fileName, String contentType) {
@@ -90,7 +96,11 @@ public class StorageService {
                 .build();
 
         PresignedPutObjectRequest presignedRequest = s3Presigner.presignPutObject(presignRequest);
-        return presignedRequest.url().toString();
+        String url = presignedRequest.url().toString();
+        if (url.contains("http://minio:9000")) {
+            url = url.replace("http://minio:9000", "http://localhost:9000");
+        }
+        return url;
     }
 
     public String generateFileName(UUID authorId, String originalExtension, boolean isPublic) {
@@ -166,7 +176,16 @@ public class StorageService {
                 .contentType(savedMetadata.getContentType())
                 .build();
 
-        messagePublisher.publish("stream:media", event);
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    messagePublisher.publish("stream:media", event);
+                }
+            });
+        } else {
+            messagePublisher.publish("stream:media", event);
+        }
 
         return savedMetadata;
     }
