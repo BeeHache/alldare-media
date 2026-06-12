@@ -1,5 +1,6 @@
 package online.alldare.media.controller.v1;
 
+import lombok.extern.slf4j.Slf4j;
 import online.alldare.media.domain.dto.StorageResponse;
 import online.alldare.media.domain.dto.UserMediaResponse;
 import online.alldare.media.service.StorageService;
@@ -19,6 +20,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/v1/storage")
 public class StorageControllerV1 {
@@ -98,10 +100,12 @@ public class StorageControllerV1 {
     @GetMapping("/my-media")
     public ResponseEntity<List<UserMediaResponse>> getMyMedia(@AuthenticationPrincipal Jwt jwt) {
         UUID currentUserId = null;
+        log.info("JWT: {}", jwt);
         if (jwt != null) {
             String userIdClaim = jwt.getClaimAsString("userId");
             currentUserId = UUID.fromString(userIdClaim != null ? userIdClaim : jwt.getSubject());
         }
+        log.info("Current user ID: {}", currentUserId);
         return ResponseEntity.ok(storageService.getUserMedia(currentUserId));
     }
 }

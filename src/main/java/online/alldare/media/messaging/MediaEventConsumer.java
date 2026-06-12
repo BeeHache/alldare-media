@@ -1,5 +1,6 @@
 package online.alldare.media.messaging;
 
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import online.alldare.media.domain.FileMetadata;
@@ -75,7 +76,7 @@ public class MediaEventConsumer {
             metadata.setOwnerWrite(true);
             metadata.setGroupWrite(false);
 
-            fileMetadataRepository.save(metadata);
+            fileMetadataRepository.saveAndFlush(metadata);
             log.info("Successfully saved file metadata for key: {}", s3Key);
 
         } catch (Exception e) {

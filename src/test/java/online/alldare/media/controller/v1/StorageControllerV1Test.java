@@ -1,5 +1,6 @@
 package online.alldare.media.controller.v1;
 
+import online.alldare.media.domain.dto.UserMediaResponse;
 import online.alldare.media.service.StorageService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -42,10 +43,12 @@ class StorageControllerV1Test {
     private StorageControllerV1 storageController;
 
     private Jwt mockJwt;
+    private boolean useNullJwt = false;
 
     @BeforeEach
     void setUp() {
         mockJwt = mock(Jwt.class);
+        useNullJwt = false;
         LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();
         mockMvc = MockMvcBuilders.standaloneSetup(storageController)
@@ -59,7 +62,7 @@ class StorageControllerV1Test {
                     @Override
                     public Object resolveArgument(MethodParameter parameter, ModelAndViewContainer mavContainer,
                                                   NativeWebRequest webRequest, WebDataBinderFactory binderFactory) {
-                        return mockJwt;
+                        return useNullJwt ? null : mockJwt;
                     }
                 })
                 .build();
@@ -109,5 +112,38 @@ class StorageControllerV1Test {
 
         mockMvc.perform(delete("/api/v1/storage/" + fileName))
                 .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void getMyMedia_WithValidJwt_ReturnsMediaList() throws Exception {
+        UUID userId = UUID.randomUUID();
+        UserMediaResponse mediaResponse = new UserMediaResponse(
+                UUID.randomUUID(),
+                "public/" + userId + "/image.jpg",
+                "image/jpeg",
+                true,
+                "https://cdn.example.com/public/" + userId + "/image.jpg",
+                java.time.Instant.now()
+        );
+
+        when(mockJwt.getClaimAsString("userId")).thenReturn(userId.toString());
+        when(storageService.getUserMedia(userId)).thenReturn(Collections.singletonList(mediaResponse));
+
+        mockMvc.perform(get("/api/v1/storage/my-media"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].s3Key").value(mediaResponse.s3Key()))
+                .andExpect(jsonPath("$[0].contentType").value(mediaResponse.contentType()))
+                .andExpect(jsonPath("$[0].worldRead").value(mediaResponse.worldRead()))
+                .andExpect(jsonPath("$[0].downloadUrl").value(mediaResponse.downloadUrl()));
+    }
+
+    @Test
+    void getMyMedia_WithNullJwt_ReturnsEmptyList() throws Exception {
+        useNullJwt = true;
+        when(storageService.getUserMedia(null)).thenReturn(Collections.emptyList());
+
+        mockMvc.perform(get("/api/v1/storage/my-media"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isEmpty());
     }
 }

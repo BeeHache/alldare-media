@@ -59,7 +59,7 @@ class MediaEventConsumerTest {
         mediaEventConsumer.handleMessage(message);
 
         // Then
-        verify(fileMetadataRepository).save(metadataCaptor.capture());
+        verify(fileMetadataRepository).saveAndFlush(metadataCaptor.capture());
         FileMetadata savedMetadata = metadataCaptor.getValue();
 
         assertThat(savedMetadata.getId()).isNotNull();
@@ -90,7 +90,7 @@ class MediaEventConsumerTest {
         mediaEventConsumer.handleMessage(message);
 
         // Then
-        verify(fileMetadataRepository).save(metadataCaptor.capture());
+        verify(fileMetadataRepository).saveAndFlush(metadataCaptor.capture());
         FileMetadata savedMetadata = metadataCaptor.getValue();
 
         assertThat(savedMetadata.getId()).isNotNull();
