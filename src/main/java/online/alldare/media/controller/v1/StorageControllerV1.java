@@ -100,12 +100,10 @@ public class StorageControllerV1 {
     @GetMapping("/my-media")
     public ResponseEntity<List<UserMediaResponse>> getMyMedia(@AuthenticationPrincipal Jwt jwt) {
         UUID currentUserId = null;
-        log.info("JWT: {}", jwt);
         if (jwt != null) {
             String userIdClaim = jwt.getClaimAsString("userId");
             currentUserId = UUID.fromString(userIdClaim != null ? userIdClaim : jwt.getSubject());
         }
-        log.info("Current user ID: {}", currentUserId);
         return ResponseEntity.ok(storageService.getUserMedia(currentUserId));
     }
 }
